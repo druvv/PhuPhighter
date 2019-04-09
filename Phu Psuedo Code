@@ -1,0 +1,56 @@
+// PHU PSEUDO CODE
+
+// Can be forwards | left | right
+direction = FORWARDS
+
+// Get all the sensor distances
+front_distance = get_front()
+left_distance = get_left()
+right_distance = get_right()
+
+// If something is blocking FORWARDS
+// Check left and right distances
+if front_distance < THRESHOLD && direction == forwards {
+  difference = left_distance - right_distance
+
+  if abs(difference < 10) && front_distance < THRESHOLD {
+    // TURN 180
+    turn(around);
+    // LOGIC TO SET THE CORRECT DIRECTION
+    if direction == left {
+      direction == right;
+    } else {
+      direction = left;
+    }
+  } else if abs(difference) < 10 {
+    // Default to left, turn left
+    turn(left);
+    direction = LEFT;
+  } else if (difference < 0) {
+    // Turn right
+    turn(right);
+    direction = RIGHT;
+  } else {
+    turn(left);
+    direction = LEFT;
+  }
+  return;
+} else if direction == left {
+    if right_distance > THRESHOLD {
+      delay(500);
+      turn(right);
+      direction = forwards;
+    } else {
+      move(forwards);
+    }
+} else if direction == right {
+    if left_distance > THRESHOLD {
+      delay(500);
+      turn(left);
+      direction = forwards;
+    } else {
+      move(forwards);
+    }
+} else {
+  move(forwards);
+}
