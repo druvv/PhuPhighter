@@ -1,24 +1,32 @@
 #include "Arduino.h"
 #include "NewPing.h"
+#include <Servo.h>
 
 #define DUBUG_MODE
 
 const int motorRightPWM = 11;
-const int motorRightA = 5;
-const int motorRightB = 4;
+const int motorRightA = 9;
+const int motorRightB = 10;
 
-const int motorLeftPWM = 10;
-const int motorLeftA = 3;
-const int motorLeftB = 2;
+const int motorLeftPWM = 6;
+const int motorLeftA = 7;
+const int motorLeftB = 8;
 
-const int frontTrig = 7;
-const int frontEcho = 6;
+const int leftServoPWM = 3;
+const int rightServoPWM = 5;
+Servo leftServo;
+Servo rightServo;
 
-const int leftTrig = 9;
-const int leftEcho = 8;
+const int slapperSwitch = 25;
+
+const int frontTrig = 12;
+const int frontEcho = 2;
+
+const int leftTrig = 34;
+const int leftEcho = 30;
  
 const int rightTrig = 13;
-const int rightEcho = 12; 
+const int rightEcho = 4; 
 
 // -- MARK: PROGRAM CONFIGURATION
 const int MAX_DISTANCE = 100; // cm
@@ -59,10 +67,15 @@ void setup() {
   pinMode(motorRightA, OUTPUT);
   pinMode(motorRightB, OUTPUT);
 
+  pinMode(slapperSwitch, INPUT);
+
   digitalWrite(motorLeftA, LOW);
   digitalWrite(motorLeftB, HIGH);
   digitalWrite(motorRightA, LOW);
   digitalWrite(motorRightB, HIGH);
+
+  leftServo.attach(leftServoPWM);
+  rightServo.attach(rightServoPWM);
 
   startTime = millis();
 }
@@ -82,9 +95,9 @@ void setLeft(int s) {
     digitalWrite(motorLeftB, LOW);
   }
 
+ 
+  Serial.print("Left: " + String(s) + "\n");
   s = abs(s);
-  //Serial.print("Left: " + String(s));
-
   analogWrite(motorLeftPWM, s);
 }
 
@@ -100,10 +113,35 @@ void setRight(int s) {
     digitalWrite(motorRightB, LOW);
   }
 
+  
+  Serial.print("Right: " + String(s) + "\n");
   s = abs(s);
-  //Serial.print("Right: " + String(s));
-
   analogWrite(motorRightPWM, s);
+}
+
+int slapUpTime = 450;
+
+void slapDown() {
+    leftServo.write(0);
+    rightServo.write(180);
+    while(true) {
+      if (digitalRead(slapperSwitch) == HIGH) {
+        break;
+      }
+    }
+    delay(50);
+    leftServo.write(90);
+    rightServo.write(88);
+    Serial.println("Slapped Down");
+}
+
+void slapUp() {
+    leftServo.write(180);
+    rightServo.write(0);
+    delay(slapUpTime);
+    leftServo.write(90);
+    rightServo.write(88);
+    Serial.println("Slapped Up");
 }
 
 // - MARK: TURNING
@@ -247,90 +285,16 @@ void printDistances() {
 // - MARK: MAIN LOOP
 
 void loop() {
-  leftOldDistance = leftDistance;
-  rightOldDistance = rightDistance;
+  // Motor Test
+  /*
+  setRight(255);
+  setLeft(255);
+  delay(2000);
+  setRight(-255);
+  setLeft(-255);
+  delay(2000);
+  */
 
-   // Needs to be a minimum of 29ms between pings to prevent cross-sensor echo according to NewPing documentation.
-  frontDistance = frontSonar.ping_cm();
-  delay(30);
-  leftDistance = leftSonar.ping_cm();
-  delay(30);
-  rightDistance = rightSonar.ping_cm();
-
-  verifyDistances();
-  //printDistances();
-
-  //delay(500);
-
-  if(millis() - startTime < 5000) { return; }
-
-  // If we are facing forwards, move forward until we detect a wall.
-  if (robotDirection == forwards && frontDistance <= FRONT_WALL_DETECT_THRESHOLD) {
-    int difference = leftDistance - rightDistance;
-    // If we don't detect any walls, turn in the default direction.
-    if (leftDistance > WALL_DETECT_THRESHOLD && rightDistance > WALL_DETECT_THRESHOLD) {
-      Serial.println("T Default");
-      if (defaultTurnIsLeft) {
-        turn(counterclockwise);
-      } else {
-        turn(clockwise);
-      }
-    // If the left wall is closer than the right wall, move right.
-    } else if (difference < 0) {
-      Serial.println("T Right");
-      turn(clockwise);
-    // If the right wall is closer than the left wall, move left.
-    } else {
-      Serial.println("T Left");
-      turn(counterclockwise);
-    }
-  // If we are facing left, move until we don't detect a right wall.
-  } else if (robotDirection == left) {
-    // If there are walls on all three sides, turn around.
-    if (rightDistance <= WALL_DETECT_THRESHOLD && frontDistance <= FRONT_WALL_DETECT_THRESHOLD) {
-      turn(aroundCCW);
-    } else if (rightDistance > WALL_DETECT_THRESHOLD) {
-      if (frontDistance <= 60) {
-        while (frontDistance > 10) {
-          delay(30);
-          frontDistance = frontSonar.ping_cm();
-          setRight(speed); setLeft(speed);
-          Serial.println("e");
-        }
-        turn(clockwise);
-      } else {
-        Serial.println("WA");
-        setLeft(speed); setRight(speed);
-        delay(WALL_AVOIDANCE_TIME);
-        turn(clockwise);
-      }
-    }
-   // If we are facing right, move until we don't detect a left wall. 
-  } else if (robotDirection == right) {
-    // If there are walls on all three sides, turn around.
-    if (leftDistance <= WALL_DETECT_THRESHOLD && frontDistance <= FRONT_WALL_DETECT_THRESHOLD) {
-      turn(aroundCW);
-    } else if (leftDistance > WALL_DETECT_THRESHOLD) {
-      if (frontDistance <= 60) {
-        while (frontDistance > 10) {
-          delay(30);
-          frontDistance = frontSonar.ping_cm();
-          setRight(speed); setLeft(speed);
-          Serial.println("e");
-        }
-        turn(counterclockwise);
-      } else {
-        Serial.println("WA");
-        setLeft(speed); setRight(speed);
-        delay(WALL_AVOIDANCE_TIME);
-        turn(counterclockwise);
-      }
-    }
-  }
-
-  // Move according to centering program
-  moveForwards();
-  delay(30);
+ slapDown();
+ slapUp();
 } 
-
-
