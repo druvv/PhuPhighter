@@ -4,6 +4,9 @@
 
 #define DUBUG_MODE
 
+// -- MARK: PIN Definitions
+
+// Motors
 const int motorRightPWM = 11;
 const int motorRightA = 9;
 const int motorRightB = 10;
@@ -12,23 +15,31 @@ const int motorLeftPWM = 6;
 const int motorLeftA = 7;
 const int motorLeftB = 8;
 
+// Slapper
+const int slapperSwitch = 25;
 const int leftServoPWM = 3;
 const int rightServoPWM = 5;
 Servo leftServo;
 Servo rightServo;
 
-const int slapperSwitch = 25;
+// Ultrasonic
+const int leftTrig = 34;
+const int leftEcho = 30;
 
 const int frontTrig = 12;
 const int frontEcho = 2;
-
-const int leftTrig = 34;
-const int leftEcho = 30;
  
 const int rightTrig = 13;
-const int rightEcho = 4; 
+const int rightEcho = 4;
 
-// -- MARK: PROGRAM CONFIGURATION
+// IR
+const int IRA1_PIN = A15;
+const int IRA2_PIN = A14;
+const int IRA3_PIN = A13;
+const int IRA4_PIN = A12;
+const int IRA5_PIN = A11;
+
+// -- MARK: PROGRAM VARIABLES
 const int MAX_DISTANCE = 100; // cm
 const int WALL_DETECT_THRESHOLD = 18;
 const int FRONT_WALL_DETECT_THRESHOLD = 15; 
@@ -42,6 +53,7 @@ enum TurnDirection {counterclockwise, clockwise, aroundCW, aroundCCW};
 enum Facing {left, right, forwards};
 Facing robotDirection = forwards;
 
+// Ultrasonic
 NewPing frontSonar(frontTrig, frontEcho, MAX_DISTANCE);
 NewPing leftSonar(leftTrig, leftEcho, MAX_DISTANCE);
 NewPing rightSonar(rightTrig, rightEcho, MAX_DISTANCE);
@@ -52,7 +64,47 @@ long rightDistance = 10000;
 long leftOldDistance = 10000;
 long rightOldDistance = 10000;
 
-long startTime = 0;
+// IR
+enum CandleDirection { candle_none, candle_left, candle_center, candle_right };
+int IR1 = 0;
+int IR2 = 0;
+int IR3 = 0;
+int IR4 = 0;
+int IR5 = 0;
+// For any pin, when should we detect that a candle is within our sight?
+const int CANDLE_DETECT_THRESHOLD = 250;
+
+// Program start delay
+long startDelay = 0;
+// Slapper
+int slapUpTime = 450;
+
+// -- MARK: FUNCTION DEFINITIONS
+// Motors
+void setLeft(int s);
+void setRight(int s);
+
+// Slapper
+void slapDown();
+void slapUp();
+
+// Turning
+void rotateRobotDirection(TurnDirection direction);
+void turn(TurnDirection direction);
+void crawl(TurnDirection direction);
+
+// Moving
+void moveForwards();
+
+// Ultrasonic
+void verifyDistances();
+void printDistances();
+
+// IR
+void scanIR();
+CandleDirection getCandleDirection();
+
+// -- MARK: FUNCTION IMPLEMENTATION
 
 void setup() {
   Serial.begin(9600);
@@ -77,12 +129,53 @@ void setup() {
   leftServo.attach(leftServoPWM);
   rightServo.attach(rightServoPWM);
 
-  startTime = millis();
+  startDelay = millis();
 }
 
-// - MARK: MOTOR SPEEDS
+void loop() {
+  // Motor Test
+  /*
+  setRight(255);
+  setLeft(255);
+  delay(2000);
+  setRight(-255);
+  setLeft(-255);
+  delay(2000);
+  */
 
-// -255 to 255
+  // Slapper Test
+  /*
+  slapDown();
+  slapUp();
+  */
+
+  // Candle Test
+  scanIR();
+  String ir1 = String(IR1);
+  String ir2 = String(IR2);
+  String ir3 = String(IR3);
+  String ir4 = String(IR4);
+  String ir5 = String(IR5);
+  Serial.println(" " + ir1 + " " + ir2 + " " + ir3 + " " + ir4 + " " + ir5);
+  CandleDirection direction = getCandleDirection();
+  switch (direction) {
+    case candle_none:
+      Serial.println("No Candle Detected");
+      break;
+    case candle_left:
+      Serial.println("Candle on Left");
+      break;
+    case candle_center:
+      Serial.println("Candle in Center");
+      break;
+    case candle_right:
+      Serial.println("Candle on Right");
+      break;
+  }
+
+  delay(1000);
+}
+
 void setLeft(int s) {
   if (s > 0) {
     digitalWrite(motorLeftA, LOW);
@@ -118,8 +211,6 @@ void setRight(int s) {
   s = abs(s);
   analogWrite(motorRightPWM, s);
 }
-
-int slapUpTime = 450;
 
 void slapDown() {
     leftServo.write(0);
@@ -282,19 +373,55 @@ void printDistances() {
   Serial.println("Right: " + String(int(rightDistance)));
 }
 
-// - MARK: MAIN LOOP
 
-void loop() {
-  // Motor Test
-  /*
-  setRight(255);
-  setLeft(255);
-  delay(2000);
-  setRight(-255);
-  setLeft(-255);
-  delay(2000);
-  */
 
- slapDown();
- slapUp();
-} 
+void scanIR() {
+    IR1 = analogRead(IRA1_PIN);
+    IR2 = analogRead(IRA2_PIN);
+    IR3 = analogRead(IRA3_PIN);
+    IR4 = analogRead(IRA4_PIN);
+    IR5 = analogRead(IRA5_PIN);
+}
+
+/*
+       IR3
+   IR2     IR4
+IR1           IR5
+*/
+
+CandleDirection getCandleDirection() {
+  int leftSum = IR1 + IR2 + IR3;
+  int centerSum = IR2 + IR3 + IR4;
+  int rightSum = IR3 + IR4 + IR5;
+
+  if (leftSum < CANDLE_DETECT_THRESHOLD && centerSum < CANDLE_DETECT_THRESHOLD && rightSum < CANDLE_DETECT_THRESHOLD) {
+    return candle_none;
+  }
+
+  if (IR1 < CANDLE_DETECT_THRESHOLD &&
+      IR2 < CANDLE_DETECT_THRESHOLD &&
+      IR3 < CANDLE_DETECT_THRESHOLD && 
+      IR4 < CANDLE_DETECT_THRESHOLD &&
+      IR5 < CANDLE_DETECT_THRESHOLD) {
+        return candle_none;
+      }
+
+  // IR1 is the greatest so left
+  if (IR1 > IR2 && IR1 > IR3 && IR1 > IR4 && IR1 > IR5) {
+    return candle_left;
+  } else if (IR2 > IR1 && IR2 > IR3 && IR2 > IR4 && IR2 > IR5) {
+    // IR2 is the greatest so left
+    return candle_left;
+  } else if (IR3 > IR1 && IR3 > IR2 && IR3 > IR4 && IR3 > IR5) {
+    // IR3 is the greatest so center
+    return candle_center;
+  } else if (IR4 > IR1 && IR4 > IR2 && IR4 > IR3 && IR4 > IR5) {
+    // IR4 is the greatest so right
+    return candle_right;
+  } else if (IR5 > IR1 && IR5 > IR2 && IR5 > IR3 && IR5 > IR4) {
+    // IR5 is the greatest so right
+    return candle_right;
+  }
+
+  return candle_none;
+}
