@@ -44,12 +44,12 @@ const int TURN_DIRECTION_PIN = 29;
 
 // -- MARK: PROGRAM VARIABLES
 const int MAX_DISTANCE = 100; // cm
-const int WALL_DETECT_THRESHOLD = 40;
-const int FRONT_WALL_DETECT_THRESHOLD = 17; 
-const int WALL_CENTERING_DISTANCE = 12; // 7cm - only used when only one wall is detected
+const int WALL_DETECT_THRESHOLD = 20;
+const int FRONT_WALL_DETECT_THRESHOLD = 18; 
+const int WALL_CENTERING_DISTANCE = 15; // 7cm - only used when only one wall is detected
 const int CANDLE_WALL_OVERRIDE_DISTANCE = 7;
-const int TURN_TIME = 500; // ms
-const int speed =  180;
+const int TURN_TIME = 700; // ms
+const int speed =  160;
 bool defaultTurnIsLeft = true;
 
 enum ProgramMode {maze, candleHunting, extinguish};
@@ -76,13 +76,13 @@ int IR3 = 0;
 int IR4 = 0;
 int IR5 = 0;
 // For any pin, when should we detect that a candle is within our sight?
-const int CANDLE_DETECT_THRESHOLD = 300;
+const int CANDLE_DETECT_THRESHOLD = 450;
 
 // Slapper
 int slapUpTime = 270;
 
 // Program start delay
-long startDelay = 5000;
+long startDelay = 2000;
 long startTime = 0;
 long lastCandleDetection = 0;
 long candleTimeoutTime = 4000;
@@ -150,7 +150,7 @@ void setup() {
   // Setup default turn direction from switch
   defaultTurnIsLeft = true;
 
-  startTime = millis();
+  delay(2000);
 }
 
 void loop() {
@@ -174,16 +174,17 @@ void loop() {
   
 
   // Candle Test
+  
+
   /*
-  scanIR();
+  scanCandleDirection();
   String ir1 = String(IR1);
   String ir2 = String(IR2);
   String ir3 = String(IR3);
   String ir4 = String(IR4);
   String ir5 = String(IR5);
   Serial.println(" " + ir1 + " " + ir2 + " " + ir3 + " " + ir4 + " " + ir5);
-  CandleDirection direction = getCandleDirection();
-  switch (direction) {
+  switch (candleDirection) {
     case candle_none:
       Serial.println("No Candle Detected");
       break;
@@ -208,7 +209,8 @@ void loop() {
  delay(100);
  */
 
- /*
+  /*
+ 
   // Test Speed
   setLeft(speed);
   setRight(speed);
@@ -226,6 +228,7 @@ void loop() {
   setRight(speed);
   delay(1000);
   turn(clockwise);
+
   */
 
   /*
@@ -236,36 +239,20 @@ void loop() {
   delay(1000);
   */
 
-  
-  // Delay the program for sensor init
+ 
   int currentTime = millis();
-  if(currentTime - startTime < startDelay) { return; }
 
   scanCandleDirection();
   scanDistances();
 
   if (programMode == extinguish) {
-    while(true) {
-      scanDistances();
-      // Wall Override
-      if (leftDistance < CANDLE_WALL_OVERRIDE_DISTANCE) {
-        // Spin clockwise
-        crawl(false, clockwise);
-      } else if (rightDistance < CANDLE_WALL_OVERRIDE_DISTANCE) {
-        crawl(false, counterclockwise);
-      } else {
-        setLeft(0);
-        setRight(0);
-        break;
-      }
-    }
-    
 
     slapDown();
     slapUp();
     delay(250);
     while(true) {
       scanCandleDirection();
+      Serial.println("Scan Can D");
       if (candleDirection == candle_left) {
         // Spin counterclockwise
         setLeft(-140);
@@ -280,6 +267,7 @@ void loop() {
       } else {
         break;
       }
+      delay(50);
     }
     setLeft(150);
     setRight(150);
@@ -326,13 +314,7 @@ void loop() {
         setRight(-140);
         candleNotCenteredTime = currentTime;
       } else {
-        /*
-        // Move forwards slowly
-        setLeft(135);
-        setRight(135);
-        */
 
-     
         programMode = extinguish;
         return;
       }
@@ -349,47 +331,46 @@ void loop() {
     return;
   }
 
-  // if (leftDistance < WALL_DETECT_THRESHOLD && 
-  //     frontDistance < FRONT_WALL_DETECT_THRESHOLD && 
-  //     rightDistance < WALL_DETECT_THRESHOLD) {
-  //     // There is a wall on all sides so turn around completely.
-  //     Serial.println("Turning Around");
-  //     turn(aroundCCW);
-  // } else if (defaultTurnIsLeft && leftDistance > WALL_DETECT_THRESHOLD) {
-  //     // There is no wall on the left
-  //     Serial.println("Turning Left");
-  //     turn(counterclockwise);
-  // } else if (!defaultTurnIsLeft && rightDistance > WALL_DETECT_THRESHOLD) {
-  //     // There is no wall on the right
-  //     Serial.println("Turning Right");
-  //     turn(clockwise);
-  // }
-
-  //moveForwards();
-
   // Turn if there's a wall in front of us
   if (frontDistance < FRONT_WALL_DETECT_THRESHOLD) {
     if (rightDistance < WALL_DETECT_THRESHOLD && leftDistance < WALL_DETECT_THRESHOLD) {
+      Serial.println("Turning Around");
       turn(aroundCCW);
     } else if (rightDistance < WALL_DETECT_THRESHOLD) {
+      Serial.println("Turning Left");
+      turn(counterclockwise);
+    } else if (leftDistance < WALL_DETECT_THRESHOLD) {
+      Serial.println("Turning Right");
+      turn(clockwise);
+    } else {
+      Serial.println("Turning Left");
       turn(counterclockwise);
     }
   }
 
   // Right hand rule
   if (rightDistance > WALL_DETECT_THRESHOLD) {
-    crawl(true, clockwise);
+    //crawl(true, clockwise);
+    Serial.println("Turning Right with Delay");
+    setRight(speed);
+    setLeft(speed);
+    delay(600);
+    turn(clockwise);
+    setRight(speed);
+    setLeft(speed);
+    delay(500);
   } else if (rightDistance < WALL_CENTERING_DISTANCE) {
     crawl(false, counterclockwise);
   } else if (rightDistance > WALL_CENTERING_DISTANCE) {
     crawl(false, clockwise);
   } else {
+    Serial.println("Going Straight");
     setRight(speed);
     setLeft(speed);
   }
 
   delay(30);
-  
+  scanDistances();
 }
 
 void setLeft(int s) {
@@ -404,8 +385,6 @@ void setLeft(int s) {
     digitalWrite(motorLeftB, LOW);
   }
 
- 
-  Serial.print("Left: " + String(s) + "\n");
   s = abs(s);
   analogWrite(motorLeftPWM, s);
 }
@@ -422,8 +401,6 @@ void setRight(int s) {
     digitalWrite(motorRightB, LOW);
   }
 
-  
-  Serial.print("Right: " + String(s) + "\n");
   s = abs(s);
   analogWrite(motorRightPWM, s);
 }
@@ -432,6 +409,7 @@ void slapDown() {
     leftServo.write(0);
     rightServo.write(180);
     while(true) {
+      Serial.println("Looking for switch");
       if (digitalRead(slapperSwitch) == LOW) {
         Serial.println("Detected Switch");
         break;
@@ -482,10 +460,10 @@ void crawl(bool hard, TurnDirection direction) {
   int fastSpeed = speed;
   int slowSpeed;
   if (hard) {
-    slowSpeed = fastSpeed - 80;
-    fastSpeed = fastSpeed + 30;
+    slowSpeed = fastSpeed - 60;
+    fastSpeed = fastSpeed;
   } else {
-    slowSpeed = fastSpeed - 40;
+    slowSpeed = fastSpeed - 30;
   }
 
   switch (direction) {
