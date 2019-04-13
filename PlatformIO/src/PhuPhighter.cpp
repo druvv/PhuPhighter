@@ -15,7 +15,7 @@ const int motorLeftPWM = 6;
 const int motorLeftA = 7;
 const int motorLeftB = 8;
 
-// Slapper
+// Slapper b
 const int slapperSwitch = 25;
 const int leftServoPWM = 3;
 const int rightServoPWM = 5;
@@ -39,19 +39,22 @@ const int IRA3_PIN = A13;
 const int IRA4_PIN = A12;
 const int IRA5_PIN = A11;
 
+// Switch pins
+const int TURN_DIRECTION_PIN = 29;
+
 // -- MARK: PROGRAM VARIABLES
 const int MAX_DISTANCE = 100; // cm
-const int WALL_DETECT_THRESHOLD = 18;
-const int FRONT_WALL_DETECT_THRESHOLD = 15; 
-const int WALL_CENTERING_DISTANCE = 10; // 7cm - only used when only one wall is detected
-const int TURN_TIME = 640; // ms
-const int WALL_AVOIDANCE_TIME = 800; // ms
-const int speed =  140;
+const int WALL_DETECT_THRESHOLD = 40;
+const int FRONT_WALL_DETECT_THRESHOLD = 17; 
+const int WALL_CENTERING_DISTANCE = 12; // 7cm - only used when only one wall is detected
+const int CANDLE_WALL_OVERRIDE_DISTANCE = 7;
+const int TURN_TIME = 500; // ms
+const int speed =  180;
 bool defaultTurnIsLeft = true;
 
+enum ProgramMode {maze, candleHunting, extinguish};
+ProgramMode programMode = maze;
 enum TurnDirection {counterclockwise, clockwise, aroundCW, aroundCCW};
-enum Facing {left, right, forwards};
-Facing robotDirection = forwards;
 
 // Ultrasonic
 NewPing frontSonar(frontTrig, frontEcho, MAX_DISTANCE);
@@ -66,18 +69,30 @@ long rightOldDistance = 10000;
 
 // IR
 enum CandleDirection { candle_none, candle_left, candle_center, candle_right };
+CandleDirection candleDirection = candle_none;
 int IR1 = 0;
 int IR2 = 0;
 int IR3 = 0;
 int IR4 = 0;
 int IR5 = 0;
 // For any pin, when should we detect that a candle is within our sight?
-const int CANDLE_DETECT_THRESHOLD = 250;
+const int CANDLE_DETECT_THRESHOLD = 300;
+
+// Slapper
+int slapUpTime = 270;
 
 // Program start delay
-long startDelay = 0;
-// Slapper
-int slapUpTime = 450;
+long startDelay = 5000;
+long startTime = 0;
+long lastCandleDetection = 0;
+long candleTimeoutTime = 4000;
+
+long candleNotCenteredTime = 0;
+long candleCenteredExtinguishStart = 1500;
+// Timer to start candle hunting
+long candleNotDetectedTime = 0;
+long candleDetectionDelay = 500;
+
 
 // -- MARK: FUNCTION DEFINITIONS
 // Motors
@@ -89,20 +104,20 @@ void slapDown();
 void slapUp();
 
 // Turning
-void rotateRobotDirection(TurnDirection direction);
 void turn(TurnDirection direction);
-void crawl(TurnDirection direction);
+void crawl(bool hard, TurnDirection direction);
 
 // Moving
 void moveForwards();
 
 // Ultrasonic
+void scanDistances();
 void verifyDistances();
 void printDistances();
 
 // IR
 void scanIR();
-CandleDirection getCandleDirection();
+void scanCandleDirection();
 
 // -- MARK: FUNCTION IMPLEMENTATION
 
@@ -129,11 +144,18 @@ void setup() {
   leftServo.attach(leftServoPWM);
   rightServo.attach(rightServoPWM);
 
-  startDelay = millis();
+  leftServo.write(90);
+  rightServo.write(88);
+
+  // Setup default turn direction from switch
+  defaultTurnIsLeft = true;
+
+  startTime = millis();
 }
 
 void loop() {
   // Motor Test
+  
   /*
   setRight(255);
   setLeft(255);
@@ -144,12 +166,15 @@ void loop() {
   */
 
   // Slapper Test
+  
   /*
   slapDown();
   slapUp();
   */
+  
 
   // Candle Test
+  /*
   scanIR();
   String ir1 = String(IR1);
   String ir2 = String(IR2);
@@ -173,7 +198,198 @@ void loop() {
       break;
   }
 
+  delay(100);
+  */
+ 
+ /*
+ // Test ultrasonic
+ scanDistances();
+ Serial.println(" " + String(leftDistance) + " " + String(frontDistance) + " " + String(rightDistance));
+ delay(100);
+ */
+
+ /*
+  // Test Speed
+  setLeft(speed);
+  setRight(speed);
   delay(1000);
+  turn(clockwise);
+  setLeft(speed);
+  setRight(speed);
+  delay(1000);
+  turn(clockwise);
+  setLeft(speed);
+  setRight(speed);
+  delay(1000);
+  turn(clockwise);
+  setLeft(speed);
+  setRight(speed);
+  delay(1000);
+  turn(clockwise);
+  */
+
+  /*
+  // Test Turning
+  turn(clockwise);
+  setRight(0);
+  setLeft(0);
+  delay(1000);
+  */
+
+  
+  // Delay the program for sensor init
+  int currentTime = millis();
+  if(currentTime - startTime < startDelay) { return; }
+
+  scanCandleDirection();
+  scanDistances();
+
+  if (programMode == extinguish) {
+    while(true) {
+      scanDistances();
+      // Wall Override
+      if (leftDistance < CANDLE_WALL_OVERRIDE_DISTANCE) {
+        // Spin clockwise
+        crawl(false, clockwise);
+      } else if (rightDistance < CANDLE_WALL_OVERRIDE_DISTANCE) {
+        crawl(false, counterclockwise);
+      } else {
+        setLeft(0);
+        setRight(0);
+        break;
+      }
+    }
+    
+
+    slapDown();
+    slapUp();
+    delay(250);
+    while(true) {
+      scanCandleDirection();
+      if (candleDirection == candle_left) {
+        // Spin counterclockwise
+        setLeft(-140);
+        setRight(140);
+      } else if (candleDirection == candle_right) {
+        // Spin clockwise
+        setLeft(140);
+        setRight(-140);
+      } else if (candleDirection == candle_none) {
+        setLeft(-140);
+        setRight(140);
+      } else {
+        break;
+      }
+    }
+    setLeft(150);
+    setRight(150);
+    delay(250);
+    setLeft(0);
+    setRight(0);
+    return;
+  }
+
+  if (programMode == candleHunting) {
+    // Spin slowly in a circle if we don't detect a candle
+    if (candleDirection == candle_none) {
+      // If we pass the candleTimeoutTime, reset the program/
+      if (currentTime - lastCandleDetection > candleTimeoutTime) {
+        programMode = maze;
+        return;
+      }
+
+      // Spin counterclockwise slowly
+      setLeft(-145); 
+      setRight(145);
+    } else {
+      // Reset candle timout
+      lastCandleDetection = currentTime;
+
+      // Wall Override
+      if (leftDistance < CANDLE_WALL_OVERRIDE_DISTANCE) {
+        crawl(true, clockwise);
+        return;
+      } else if (rightDistance < CANDLE_WALL_OVERRIDE_DISTANCE) {
+        crawl(true, counterclockwise);
+        return;
+      }
+
+      // Move towards candle
+      if (candleDirection == candle_left) {
+        // Spin counterclockwise
+        setLeft(-140);
+        setRight(140);
+        candleNotCenteredTime = currentTime;
+      } else if (candleDirection == candle_right) {
+        // Spin clockwise
+        setLeft(140);
+        setRight(-140);
+        candleNotCenteredTime = currentTime;
+      } else {
+        /*
+        // Move forwards slowly
+        setLeft(135);
+        setRight(135);
+        */
+
+     
+        programMode = extinguish;
+        return;
+      }
+    }
+
+    delay(30);
+
+    return;
+  }
+
+  if (candleDirection != candle_none) {
+    delay(500);
+    programMode = candleHunting;
+    return;
+  }
+
+  // if (leftDistance < WALL_DETECT_THRESHOLD && 
+  //     frontDistance < FRONT_WALL_DETECT_THRESHOLD && 
+  //     rightDistance < WALL_DETECT_THRESHOLD) {
+  //     // There is a wall on all sides so turn around completely.
+  //     Serial.println("Turning Around");
+  //     turn(aroundCCW);
+  // } else if (defaultTurnIsLeft && leftDistance > WALL_DETECT_THRESHOLD) {
+  //     // There is no wall on the left
+  //     Serial.println("Turning Left");
+  //     turn(counterclockwise);
+  // } else if (!defaultTurnIsLeft && rightDistance > WALL_DETECT_THRESHOLD) {
+  //     // There is no wall on the right
+  //     Serial.println("Turning Right");
+  //     turn(clockwise);
+  // }
+
+  //moveForwards();
+
+  // Turn if there's a wall in front of us
+  if (frontDistance < FRONT_WALL_DETECT_THRESHOLD) {
+    if (rightDistance < WALL_DETECT_THRESHOLD && leftDistance < WALL_DETECT_THRESHOLD) {
+      turn(aroundCCW);
+    } else if (rightDistance < WALL_DETECT_THRESHOLD) {
+      turn(counterclockwise);
+    }
+  }
+
+  // Right hand rule
+  if (rightDistance > WALL_DETECT_THRESHOLD) {
+    crawl(true, clockwise);
+  } else if (rightDistance < WALL_CENTERING_DISTANCE) {
+    crawl(false, counterclockwise);
+  } else if (rightDistance > WALL_CENTERING_DISTANCE) {
+    crawl(false, clockwise);
+  } else {
+    setRight(speed);
+    setLeft(speed);
+  }
+
+  delay(30);
+  
 }
 
 void setLeft(int s) {
@@ -216,11 +432,11 @@ void slapDown() {
     leftServo.write(0);
     rightServo.write(180);
     while(true) {
-      if (digitalRead(slapperSwitch) == HIGH) {
+      if (digitalRead(slapperSwitch) == LOW) {
+        Serial.println("Detected Switch");
         break;
       }
     }
-    delay(50);
     leftServo.write(90);
     rightServo.write(88);
     Serial.println("Slapped Down");
@@ -236,50 +452,6 @@ void slapUp() {
 }
 
 // - MARK: TURNING
-
-void rotateRobotDirection(TurnDirection direction) {
-  switch (robotDirection) {
-  case left:
-    if (direction == clockwise) {
-      robotDirection = forwards;
-    }
-
-    if (direction == aroundCCW || direction == aroundCW) {
-      robotDirection = right;
-    }
-
-    break;
-  case right:
-    if (direction == counterclockwise) {
-      robotDirection = forwards;
-    }
-
-    if (direction == aroundCCW || direction == aroundCW) {
-      robotDirection = left;
-    }
-
-    break;
-  case forwards:
-    if (direction == counterclockwise) {
-      robotDirection = left;
-    }
-
-    if (direction == clockwise) {
-      robotDirection = right;
-    }
-
-    break;
-  }
- 
-  if (robotDirection == forwards) {
-    Serial.println("DIR: F");
-  } else if (robotDirection == left) {
-    Serial.println("DIR: L");
-  } else {
-    Serial.println("DIR: R");
-  }
-
-}
 
 void turn(TurnDirection direction) {
   switch (direction) {
@@ -304,13 +476,18 @@ void turn(TurnDirection direction) {
     delay(TURN_TIME * 2);
     break;
   }
-
-  rotateRobotDirection(direction);
 }
 
-void crawl(TurnDirection direction) {
+void crawl(bool hard, TurnDirection direction) {
   int fastSpeed = speed;
-  int slowSpeed = speed - 40;
+  int slowSpeed;
+  if (hard) {
+    slowSpeed = fastSpeed - 80;
+    fastSpeed = fastSpeed + 30;
+  } else {
+    slowSpeed = fastSpeed - 40;
+  }
+
   switch (direction) {
   case clockwise:
       setLeft(fastSpeed);
@@ -331,26 +508,40 @@ void crawl(TurnDirection direction) {
 void moveForwards() {
   if (rightDistance <= WALL_DETECT_THRESHOLD && leftDistance <= WALL_DETECT_THRESHOLD) {
     if (rightDistance > leftDistance) {
-      crawl(clockwise);
+      crawl(false, clockwise);
     } else {
-      crawl(counterclockwise);
+      crawl(false, counterclockwise);
     }
   } else if (rightDistance <= WALL_DETECT_THRESHOLD) {
     if (rightDistance < WALL_CENTERING_DISTANCE) {
-      crawl(counterclockwise);
+      crawl(false, counterclockwise);
     } else {
-      crawl(clockwise);
+      crawl(false, clockwise);
     }
   } else if (leftDistance <= WALL_DETECT_THRESHOLD) {
     if (leftDistance < WALL_CENTERING_DISTANCE) {
-      crawl(clockwise);
+      crawl(false, clockwise);
     } else {
-      crawl(counterclockwise);
+      crawl(false, counterclockwise);
     }
   } else {
     Serial.println("Crawling Forward");
     setLeft(speed); setRight(speed);
   }
+}
+
+void scanDistances() {
+  leftOldDistance = leftDistance;
+  rightOldDistance = rightDistance;
+
+   // Needs to be a minimum of 29ms between pings to prevent cross-sensor echo according to NewPing documentation.
+  frontDistance = frontSonar.ping_cm();
+  delay(30);
+  leftDistance = leftSonar.ping_cm();
+  delay(30);
+  rightDistance = rightSonar.ping_cm();
+
+  verifyDistances();
 }
 
 void verifyDistances() {
@@ -389,13 +580,15 @@ void scanIR() {
 IR1           IR5
 */
 
-CandleDirection getCandleDirection() {
+void scanCandleDirection() {
+  scanIR();
   int leftSum = IR1 + IR2 + IR3;
   int centerSum = IR2 + IR3 + IR4;
   int rightSum = IR3 + IR4 + IR5;
 
   if (leftSum < CANDLE_DETECT_THRESHOLD && centerSum < CANDLE_DETECT_THRESHOLD && rightSum < CANDLE_DETECT_THRESHOLD) {
-    return candle_none;
+    candleDirection = candle_none;
+    return;
   }
 
   if (IR1 < CANDLE_DETECT_THRESHOLD &&
@@ -403,25 +596,24 @@ CandleDirection getCandleDirection() {
       IR3 < CANDLE_DETECT_THRESHOLD && 
       IR4 < CANDLE_DETECT_THRESHOLD &&
       IR5 < CANDLE_DETECT_THRESHOLD) {
-        return candle_none;
+        candleDirection = candle_none;
+        return;
       }
 
   // IR1 is the greatest so left
   if (IR1 > IR2 && IR1 > IR3 && IR1 > IR4 && IR1 > IR5) {
-    return candle_left;
+    candleDirection = candle_left;
   } else if (IR2 > IR1 && IR2 > IR3 && IR2 > IR4 && IR2 > IR5) {
     // IR2 is the greatest so left
-    return candle_left;
+    candleDirection = candle_left;
   } else if (IR3 > IR1 && IR3 > IR2 && IR3 > IR4 && IR3 > IR5) {
     // IR3 is the greatest so center
-    return candle_center;
+    candleDirection = candle_center;
   } else if (IR4 > IR1 && IR4 > IR2 && IR4 > IR3 && IR4 > IR5) {
     // IR4 is the greatest so right
-    return candle_right;
+    candleDirection = candle_right;
   } else if (IR5 > IR1 && IR5 > IR2 && IR5 > IR3 && IR5 > IR4) {
     // IR5 is the greatest so right
-    return candle_right;
+    candleDirection = candle_right;
   }
-
-  return candle_none;
 }
