@@ -76,7 +76,7 @@ int IR3 = 0;
 int IR4 = 0;
 int IR5 = 0;
 // For any pin, when should we detect that a candle is within our sight?
-const int CANDLE_DETECT_THRESHOLD = 450;
+const int CANDLE_DETECT_THRESHOLD = 500;
 
 // Slapper
 int slapUpTime = 270;
@@ -92,6 +92,10 @@ long candleCenteredExtinguishStart = 1500;
 // Timer to start candle hunting
 long candleNotDetectedTime = 0;
 long candleDetectionDelay = 500;
+
+int extinguishCount = 0;
+
+bool firstStart = true;
 
 
 // -- MARK: FUNCTION DEFINITIONS
@@ -245,11 +249,24 @@ void loop() {
   scanCandleDirection();
   scanDistances();
 
+  if (firstStart) {
+    firstStart = false;
+    setLeft(speed);
+    setRight(speed);
+    delay(1000);
+    return;
+  }
+
   if (programMode == extinguish) {
 
-    slapDown();
-    slapUp();
-    delay(250);
+    if (extinguishCount == 0) {
+      extinguishCount += 1;
+    } else {
+      slapDown();
+      slapUp();
+      delay(250);
+    }
+    
     while(true) {
       scanCandleDirection();
       Serial.println("Scan Can D");
@@ -326,7 +343,7 @@ void loop() {
   }
 
   if (candleDirection != candle_none) {
-    delay(500);
+    delay(800);
     programMode = candleHunting;
     return;
   }
@@ -349,19 +366,19 @@ void loop() {
   }
 
   // Right hand rule
-  if (rightDistance > WALL_DETECT_THRESHOLD) {
-    //crawl(true, clockwise);
-    Serial.println("Turning Right with Delay");
-    setRight(speed);
-    setLeft(speed);
-    delay(600);
-    turn(clockwise);
-    setRight(speed);
-    setLeft(speed);
-    delay(500);
-  } else if (rightDistance < WALL_CENTERING_DISTANCE) {
+  if (rightDistance > 35) {
+    crawl(true, clockwise);
+    // Serial.println("Turning Right with Delay");
+    // setRight(speed);
+    // setLeft(speed);
+    // delay(600);
+    // turn(clockwise);
+    // setRight(speed);
+    // setLeft(speed);
+    // delay(500);
+  } else if (rightDistance < 27 && rightDistance < WALL_CENTERING_DISTANCE) {
     crawl(false, counterclockwise);
-  } else if (rightDistance > WALL_CENTERING_DISTANCE) {
+  } else if (rightDistance < 27 && rightDistance > WALL_CENTERING_DISTANCE) {
     crawl(false, clockwise);
   } else {
     Serial.println("Going Straight");
@@ -460,10 +477,10 @@ void crawl(bool hard, TurnDirection direction) {
   int fastSpeed = speed;
   int slowSpeed;
   if (hard) {
-    slowSpeed = fastSpeed - 60;
-    fastSpeed = fastSpeed;
+    slowSpeed = fastSpeed - 70;
+    fastSpeed = fastSpeed + 20;
   } else {
-    slowSpeed = fastSpeed - 30;
+    slowSpeed = fastSpeed - 40;
   }
 
   switch (direction) {
